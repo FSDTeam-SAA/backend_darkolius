@@ -7,6 +7,8 @@ import subscriptionRoute from "../route/subscription.route.js";
 import paymentRoute from "../route/payment.route.js";
 import nutrationRoute from "../route/nutartion.route.js";
 import trainingRoute from "../route/training.route.js";
+import { ProductRoute } from "../route/product.route.js";
+import { CartRoute } from "../route/cart.route.js";
 
 const router = express.Router();
 
@@ -21,5 +23,7 @@ router.use("/training", trainingRoute);
 router.use("/subscription", subscriptionRoute);
 
 router.use("/payment", paymentRoute);
+router.use("/product", ProductRoute);
+router.use("/cart", CartRoute);
 
 export default router;
