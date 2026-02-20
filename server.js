@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
+import morgan from "morgan";
 import router from "./mainroute/index.js";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -27,9 +28,10 @@ app.use(
     credentials: true,
     origin: "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  })
+  }),
 );
 
+app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
