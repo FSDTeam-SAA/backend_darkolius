@@ -20,7 +20,22 @@ const trainingSchema = new mongoose.Schema(
         public_id:{
             type: String
         }
-    }
+    },
+    healthProfile: {
+      currentWeight: { type: String },
+      targetWeight: { type: String },
+      recentWeightChanges: { type: String },
+      bodyType: { type: String },
+      currentHeight: { type: String },
+      sleepPatterns: { type: String },
+      appetiteHunger: { type: String },
+      typicalDailyMeals: { type: String },
+      waterFluidIntake: { type: String },
+      surgicalHistory: { type: String },
+      currentPhysicalPains: { type: String },
+      digestionGutHealth: { type: String },
+      supplementsCurrentlyUsed: { type: String },
+    },
 
   },
   {

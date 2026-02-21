@@ -7,6 +7,8 @@ import subscriptionRoute from "../route/subscription.route.js";
 import paymentRoute from "../route/payment.route.js";
 import nutrationRoute from "../route/nutartion.route.js";
 import trainingRoute from "../route/training.route.js";
+import notificationRoute from "../route/notification.route.js";
+import attendanceRoute from "../route/attendance.route.js";
 import { ProductRoute } from "../route/product.route.js";
 import { CartRoute } from "../route/cart.route.js";
 
@@ -18,6 +20,8 @@ router.use("/user", userRoute);
 router.use("/admin", adminRoute);
 router.use("/nutration", nutrationRoute);
 router.use("/training", trainingRoute);
+router.use("/notification", notificationRoute);
+router.use("/attendance", attendanceRoute);
 
 // New features (kept separate from existing APIs)
 router.use("/subscription", subscriptionRoute);

@@ -23,6 +23,7 @@ export const createTraining = catchAsync(async (req, res) => {
     weight,
     date,
     image,
+    healthProfile,
   } = req.body;
 
   // validation
@@ -55,6 +56,7 @@ export const createTraining = catchAsync(async (req, res) => {
           public_id: image.public_id || null,
         }
       : undefined,
+    healthProfile: healthProfile || undefined,
   };
 
   const training = await Training.create(trainingData);
