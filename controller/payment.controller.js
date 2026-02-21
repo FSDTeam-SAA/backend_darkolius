@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import mongoose from "mongoose";
 import { paymentInfo } from "../model/payment.model.js";
 import { Subscription } from "../model/subscription.model.js";
 import { User } from "../model/user.model.js";
@@ -17,12 +18,36 @@ const makeOrderId = () =>
     .slice(-3)}`;
 
 export const createPayment = async (req, res) => {
-  const { userId, price, subscriptionId, billingPeriod, useTestStripe } =
-    req.body;
+  const {
+    userId,
+    price,
+    subscriptionId,
+    billingPeriod,
+    paymentMethod,
+    useTestStripe,
+  } = req.body;
 
   if (!price || Number(price) <= 0) {
     return res.status(400).json({ error: "Valid price is required." });
   }
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return res.status(500).json({ error: "Stripe is not configured." });
+  }
+
+  const tokenUserId = req.user?._id?.toString?.();
+  const incomingUserId = userId?.toString?.();
+  const resolvedUserId = tokenUserId || incomingUserId || null;
+  const normalizedUserId = mongoose.isValidObjectId(resolvedUserId)
+    ? resolvedUserId
+    : null;
+  const normalizedSubscriptionId = mongoose.isValidObjectId(subscriptionId)
+    ? subscriptionId
+    : null;
+  const normalizedPaymentMethod =
+    paymentMethod === "stripe" || paymentMethod === "card"
+      ? paymentMethod
+      : "card";
 
   const hasSubscription = Boolean(subscriptionId && billingPeriod);
   if (
@@ -37,8 +62,12 @@ export const createPayment = async (req, res) => {
 
   try {
     if (hasSubscription) {
+      if (!normalizedSubscriptionId) {
+        return res.status(400).json({ error: "Invalid subscriptionId." });
+      }
+
       // For subscription payments, verify the subscription exists
-      const subscription = await Subscription.findById(subscriptionId);
+      const subscription = await Subscription.findById(normalizedSubscriptionId);
 
       if (!subscription) {
         return res.status(404).json({ error: "Subscription plan not found." });
@@ -58,12 +87,13 @@ export const createPayment = async (req, res) => {
 
     // Create metadata
     const metadata = {};
-    if (userId) metadata.userId = `${userId}`;
+    if (normalizedUserId) metadata.userId = `${normalizedUserId}`;
 
     if (hasSubscription) {
-      metadata.subscriptionId = `${subscriptionId}`;
+      metadata.subscriptionId = `${normalizedSubscriptionId}`;
       metadata.billingPeriod = `${billingPeriod}`;
     }
+    metadata.paymentMethod = normalizedPaymentMethod;
 
     const paymentIntentPayload = {
       amount: Math.round(Number(price) * 100),
@@ -85,8 +115,8 @@ export const createPayment = async (req, res) => {
     );
 
     let purchaseItems = [];
-    if (!hasSubscription && userId) {
-      const cart = await Cart.findOne({ user: userId }).populate("items.product");
+    if (!hasSubscription && normalizedUserId) {
+      const cart = await Cart.findOne({ user: normalizedUserId }).populate("items.product");
       if (cart?.items?.length) {
         purchaseItems = cart.items.map((item) => ({
           productId: item.product?._id,
@@ -99,13 +129,14 @@ export const createPayment = async (req, res) => {
     }
 
     await paymentInfo.create({
-      userId: userId || null,
-      subscriptionId: hasSubscription ? subscriptionId : null,
+      userId: normalizedUserId,
+      subscriptionId: hasSubscription ? normalizedSubscriptionId : null,
       price: Number(price),
       orderId: makeOrderId(),
       items: purchaseItems,
       transactionId: paymentIntent.id,
       paymentStatus: "pending",
+      paymentMethod: normalizedPaymentMethod,
       billingPeriod: hasSubscription ? billingPeriod : null,
     });
 
@@ -116,7 +147,7 @@ export const createPayment = async (req, res) => {
       message: "PaymentIntent created.",
     });
   } catch (error) {
-    res.status(500).json({ error: "Internal server error." });
+    res.status(500).json({ error: error?.message || "Internal server error." });
     console.log(error);
   }
 };
@@ -308,6 +339,29 @@ export const getMyMembershipSummary = async (req, res) => {
         paymentMethod: latestMembershipPayment.paymentMethod || "Card",
         paymentStatus: latestMembershipPayment.paymentStatus || "complete",
       },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const getPaymentConfig = async (req, res) => {
+  try {
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || "";
+    if (!publishableKey) {
+      return res.status(500).json({
+        success: false,
+        error: "Stripe publishable key is not configured.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { publishableKey },
     });
   } catch (error) {
     return res.status(500).json({
