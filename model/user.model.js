@@ -30,6 +30,21 @@ const userSchema = new Schema(
     address: {
       type: String,
     },
+    personalBodyDetails: {
+      currentWeight: { type: String, default: "" },
+      targetWeight: { type: String, default: "" },
+      recentWeightChanges: { type: String, default: "" },
+      bodyType: { type: String, default: "" },
+      currentHeight: { type: String, default: "" },
+      sleepPatterns: { type: String, default: "" },
+      appetiteHunger: { type: String, default: "" },
+      typicalDailyMeals: { type: String, default: "" },
+      waterFluidIntake: { type: String, default: "" },
+      surgicalHistory: { type: String, default: "" },
+      currentPhysicalPains: { type: String, default: "" },
+      digestionGutHealth: { type: String, default: "" },
+      supplementsCurrentlyUsed: { type: String, default: "" },
+    },
     verificationInfo: {
       verified: { type: Boolean, default: false },
       token: { type: String, default: "" },
