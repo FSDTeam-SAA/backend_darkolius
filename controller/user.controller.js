@@ -24,7 +24,28 @@ export const getProfile = catchAsync(async (req, res) => {
 
 // Update profile
 export const updateProfile = catchAsync(async (req, res) => {
-  const { name, gender, dob, age, address } = req.body;
+  const {
+    name,
+    gender,
+    dob,
+    age,
+    address,
+    phone,
+    email,
+    currentWeight,
+    targetWeight,
+    recentWeightChanges,
+    bodyType,
+    currentHeight,
+    sleepPatterns,
+    appetiteHunger,
+    typicalDailyMeals,
+    waterFluidIntake,
+    surgicalHistory,
+    currentPhysicalPains,
+    digestionGutHealth,
+    supplementsCurrentlyUsed,
+  } = req.body;
 
   const userId = req.user._id;
 
@@ -42,6 +63,36 @@ export const updateProfile = catchAsync(async (req, res) => {
   if (dob) user.dob = dob;
   if (age) user.age = age;
   if (address) user.address = address;
+  if (phone) user.phone = phone;
+  if (email) {
+    const emailTaken = await User.findOne({
+      email,
+      _id: { $ne: userId },
+    }).select("_id");
+    if (emailTaken) {
+      throw new AppError(httpStatus.BAD_REQUEST, "Email already in use");
+    }
+    user.email = email;
+  }
+
+  user.personalBodyDetails = {
+    ...(user.personalBodyDetails || {}),
+    ...(currentWeight !== undefined ? { currentWeight } : {}),
+    ...(targetWeight !== undefined ? { targetWeight } : {}),
+    ...(recentWeightChanges !== undefined ? { recentWeightChanges } : {}),
+    ...(bodyType !== undefined ? { bodyType } : {}),
+    ...(currentHeight !== undefined ? { currentHeight } : {}),
+    ...(sleepPatterns !== undefined ? { sleepPatterns } : {}),
+    ...(appetiteHunger !== undefined ? { appetiteHunger } : {}),
+    ...(typicalDailyMeals !== undefined ? { typicalDailyMeals } : {}),
+    ...(waterFluidIntake !== undefined ? { waterFluidIntake } : {}),
+    ...(surgicalHistory !== undefined ? { surgicalHistory } : {}),
+    ...(currentPhysicalPains !== undefined ? { currentPhysicalPains } : {}),
+    ...(digestionGutHealth !== undefined ? { digestionGutHealth } : {}),
+    ...(supplementsCurrentlyUsed !== undefined
+      ? { supplementsCurrentlyUsed }
+      : {}),
+  };
 
   console.log(req.file);
 

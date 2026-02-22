@@ -13,17 +13,20 @@ import AppError from "../errors/AppError.js";
  * CREATE TRAINING
  */
 export const createTraining = catchAsync(async (req, res) => {
-//   const userId = req.user._id;
+  const authUserId = req.user?._id?.toString?.();
 
   const {
-    userId,
+    userId: bodyUserId,
     name,
     reps,
     rest,
     weight,
     date,
     image,
+    healthProfile,
   } = req.body;
+
+  const userId = authUserId || bodyUserId;
 
   // validation
   if (!name) {
@@ -35,6 +38,10 @@ export const createTraining = catchAsync(async (req, res) => {
   }
 
   // verify user exists
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new AppError(httpStatus.BAD_REQUEST, "Invalid user id");
+  }
+
   const userExists = await User.exists({ _id: userId });
 
   if (!userExists) {
@@ -55,6 +62,7 @@ export const createTraining = catchAsync(async (req, res) => {
           public_id: image.public_id || null,
         }
       : undefined,
+    healthProfile: healthProfile || undefined,
   };
 
   const training = await Training.create(trainingData);
@@ -253,6 +261,9 @@ export const getTodayTrainings = catchAsync(async (req, res) => {
     statusCode: httpStatus.OK,
     success: true,
     message: "Today's trainings fetched successfully",
+    meta: {
+      serverDate: new Date().toISOString(),
+    },
     data: trainings,
   });
 });

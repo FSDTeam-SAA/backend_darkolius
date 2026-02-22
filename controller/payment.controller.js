@@ -1,7 +1,9 @@
 import dotenv from "dotenv";
+import mongoose from "mongoose";
 import { paymentInfo } from "../model/payment.model.js";
 import { Subscription } from "../model/subscription.model.js";
 import { User } from "../model/user.model.js";
+import { Cart } from "../model/cart.model.js";
 import Stripe from "stripe";
 
 dotenv.config();
@@ -10,60 +12,132 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2022-11-15",
 });
 
-export const createPayment = async (req, res) => {
-  const { userId, price, subscriptionId, billingPeriod } = req.body;
+const makeOrderId = () =>
+  `PFC-${Math.floor(1000 + Math.random() * 9000)}${Date.now()
+    .toString()
+    .slice(-3)}`;
 
-  if (!price) {
-    return res.status(400).json({ error: "Price and type are required." });
+export const createPayment = async (req, res) => {
+  const {
+    userId,
+    price,
+    subscriptionId,
+    billingPeriod,
+    paymentMethod,
+    useTestStripe,
+  } = req.body;
+
+  if (!price || Number(price) <= 0) {
+    return res.status(400).json({ error: "Valid price is required." });
   }
 
-  if (!billingPeriod || !subscriptionId) {
-    return res
-      .status(400)
-      .json({ error: "Subscription and billing period are required." });
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return res.status(500).json({ error: "Stripe is not configured." });
+  }
+
+  const tokenUserId = req.user?._id?.toString?.();
+  const incomingUserId = userId?.toString?.();
+  const resolvedUserId = tokenUserId || incomingUserId || null;
+  const normalizedUserId = mongoose.isValidObjectId(resolvedUserId)
+    ? resolvedUserId
+    : null;
+  const normalizedSubscriptionId = mongoose.isValidObjectId(subscriptionId)
+    ? subscriptionId
+    : null;
+  const normalizedPaymentMethod =
+    paymentMethod === "stripe" || paymentMethod === "card"
+      ? paymentMethod
+      : "card";
+
+  const hasSubscription = Boolean(subscriptionId && billingPeriod);
+  if (
+    (subscriptionId && !billingPeriod) ||
+    (!subscriptionId && billingPeriod)
+  ) {
+    return res.status(400).json({
+      error:
+        "Subscription payment must include both subscriptionId and billingPeriod.",
+    });
   }
 
   try {
-    // For subscription payments, verify the subscription exists
-    const subscription = await Subscription.findById(subscriptionId);
+    if (hasSubscription) {
+      if (!normalizedSubscriptionId) {
+        return res.status(400).json({ error: "Invalid subscriptionId." });
+      }
 
-    if (!subscription) {
-      return res.status(404).json({ error: "Subscription plan not found." });
-    }
+      // For subscription payments, verify the subscription exists
+      const subscription = await Subscription.findById(normalizedSubscriptionId);
 
-    // Verify price matches the selected billing period
-    const expectedPrice =
-      billingPeriod === "yearly"
-        ? subscription.priceYearly
-        : subscription.priceMonthly;
-    if (Math.abs(price - expectedPrice) > 0.01) {
-      return res
-        .status(400)
-        .json({ error: "Price mismatch with subscription plan." });
+      if (!subscription) {
+        return res.status(404).json({ error: "Subscription plan not found." });
+      }
+
+      // Verify price matches the selected billing period
+      const expectedPrice =
+        billingPeriod === "yearly"
+          ? subscription.priceYearly
+          : subscription.priceMonthly;
+      if (Math.abs(price - expectedPrice) > 0.01) {
+        return res
+          .status(400)
+          .json({ error: "Price mismatch with subscription plan." });
+      }
     }
 
     // Create metadata
-    const metadata = { userId };
+    const metadata = {};
+    if (normalizedUserId) metadata.userId = `${normalizedUserId}`;
 
-    if (subscriptionId) {
-      metadata.subscriptionId = subscriptionId;
-      metadata.billingPeriod = billingPeriod;
+    if (hasSubscription) {
+      metadata.subscriptionId = `${normalizedSubscriptionId}`;
+      metadata.billingPeriod = `${billingPeriod}`;
+    }
+    metadata.paymentMethod = normalizedPaymentMethod;
+
+    const paymentIntentPayload = {
+      amount: Math.round(Number(price) * 100),
+      currency: "usd",
+      metadata,
+    };
+
+    // Test-mode fast path for mobile: confirms with Stripe's test card method.
+    if (useTestStripe === true) {
+      paymentIntentPayload.payment_method = "pm_card_visa";
+      paymentIntentPayload.confirm = true;
+      paymentIntentPayload.automatic_payment_methods = { enabled: false };
+    } else {
+      paymentIntentPayload.automatic_payment_methods = { enabled: true };
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(price * 100),
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      metadata,
-    });
+    const paymentIntent = await stripe.paymentIntents.create(
+      paymentIntentPayload,
+    );
+
+    let purchaseItems = [];
+    if (!hasSubscription && normalizedUserId) {
+      const cart = await Cart.findOne({ user: normalizedUserId }).populate("items.product");
+      if (cart?.items?.length) {
+        purchaseItems = cart.items.map((item) => ({
+          productId: item.product?._id,
+          name: item.product?.name || "Product",
+          imageUrl: item.product?.image?.[0]?.url || "",
+          unitPrice: Number(item.product?.price || 0),
+          quantity: Number(item.quantity || 1),
+        }));
+      }
+    }
 
     await paymentInfo.create({
-      userId,
-      subscriptionId: subscriptionId || null,
-      price,
+      userId: normalizedUserId,
+      subscriptionId: hasSubscription ? normalizedSubscriptionId : null,
+      price: Number(price),
+      orderId: makeOrderId(),
+      items: purchaseItems,
       transactionId: paymentIntent.id,
       paymentStatus: "pending",
-      billingPeriod: billingPeriod || null,
+      paymentMethod: normalizedPaymentMethod,
+      billingPeriod: hasSubscription ? billingPeriod : null,
     });
 
     res.status(200).json({
@@ -73,7 +147,7 @@ export const createPayment = async (req, res) => {
       message: "PaymentIntent created.",
     });
   } catch (error) {
-    res.status(500).json({ error: "Internal server error." });
+    res.status(500).json({ error: error?.message || "Internal server error." });
     console.log(error);
   }
 };
@@ -137,6 +211,11 @@ export const confirmPayment = async (req, res) => {
           });
         }
       }
+    } else if (paymentRecord.userId) {
+      await Cart.findOneAndUpdate(
+        { user: paymentRecord.userId },
+        { $set: { items: [] } },
+      );
     }
 
     return res.status(200).json({
@@ -149,6 +228,146 @@ export const confirmPayment = async (req, res) => {
     return res.status(500).json({
       error: "Internal server error",
       stripeError: error?.message,
+    });
+  }
+};
+
+export const getMyPurchaseHistory = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const payments = await paymentInfo
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const pendingOrders = payments.filter((p) => p.paymentStatus === "pending").length;
+    const completed = payments.filter((p) => p.paymentStatus === "complete");
+    const hasActivePlan = completed.some((p) => Boolean(p.subscriptionId));
+    const lastPurchaseAt = completed.length ? completed[0].createdAt : null;
+
+    const purchases = completed.flatMap((payment) => {
+      if (!payment.items?.length) {
+        return [
+          {
+            orderId: payment.orderId || payment.transactionId || "N/A",
+            title: payment.subscriptionId ? "Subscription Plan" : "Purchase",
+            price: Number(payment.price || 0),
+            imageUrl: "",
+            purchasedAt: payment.createdAt,
+          },
+        ];
+      }
+
+      return payment.items.map((item) => ({
+        orderId: payment.orderId || payment.transactionId || "N/A",
+        title: item.name || "Product",
+        price: Number(item.unitPrice || 0) * Number(item.quantity || 1),
+        imageUrl: item.imageUrl || "",
+        purchasedAt: payment.createdAt,
+      }));
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Purchase history retrieved successfully",
+      data: {
+        pendingOrders,
+        hasActivePlan,
+        lastPurchaseAt,
+        purchases,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const getMyMembershipSummary = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const latestMembershipPayment = await paymentInfo
+      .findOne({
+        userId,
+        subscriptionId: { $ne: null },
+        paymentStatus: "complete",
+      })
+      .sort({ createdAt: -1 })
+      .populate("subscriptionId")
+      .lean();
+
+    if (!latestMembershipPayment) {
+      return res.status(200).json({
+        success: true,
+        message: "Membership summary retrieved successfully",
+        data: {
+          hasActiveMembership: false,
+        },
+      });
+    }
+
+    const startedAt = new Date(latestMembershipPayment.createdAt);
+    const renewalDate = new Date(startedAt);
+    if (latestMembershipPayment.billingPeriod === "yearly") {
+      renewalDate.setFullYear(renewalDate.getFullYear() + 1);
+    } else {
+      renewalDate.setMonth(renewalDate.getMonth() + 1);
+    }
+
+    const subscription = latestMembershipPayment.subscriptionId || {};
+
+    return res.status(200).json({
+      success: true,
+      message: "Membership summary retrieved successfully",
+      data: {
+        hasActiveMembership: true,
+        planName: subscription.name || "Subscription Plan",
+        price: Number(latestMembershipPayment.price || 0),
+        billingPeriod: latestMembershipPayment.billingPeriod || "monthly",
+        renewalDate,
+        paymentMethod: latestMembershipPayment.paymentMethod || "Card",
+        paymentStatus: latestMembershipPayment.paymentStatus || "complete",
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const getPaymentConfig = async (req, res) => {
+  try {
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || "";
+    if (!publishableKey) {
+      return res.status(500).json({
+        success: false,
+        error: "Stripe publishable key is not configured.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { publishableKey },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
     });
   }
 };

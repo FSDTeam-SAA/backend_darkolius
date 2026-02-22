@@ -13,10 +13,10 @@ import AppError from "../errors/AppError.js";
  * CREATE NUTRATION
  */
 export const createNutration = catchAsync(async (req, res) => {
-//   const userId = req.user._id;
+  const authUserId = req.user?._id?.toString?.();
 
   const {
-    userId,
+    userId: bodyUserId,
     name,
     time,
     meal,
@@ -28,6 +28,8 @@ export const createNutration = catchAsync(async (req, res) => {
     image,
   } = req.body;
 
+  const userId = authUserId || bodyUserId;
+
   // validation
   if (!name) {
     throw new AppError(httpStatus.BAD_REQUEST, "Name is required");
@@ -38,6 +40,10 @@ export const createNutration = catchAsync(async (req, res) => {
   }
 
   // verify user exists
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new AppError(httpStatus.BAD_REQUEST, "Invalid user id");
+  }
+
   const userExists = await User.exists({ _id: userId });
 
   if (!userExists) {
@@ -259,6 +265,9 @@ export const getTodayNutrations = catchAsync(async (req, res) => {
     statusCode: httpStatus.OK,
     success: true,
     message: "Today's nutrations fetched successfully",
+    meta: {
+      serverDate: new Date().toISOString(),
+    },
     data: nutrations,
   });
 });

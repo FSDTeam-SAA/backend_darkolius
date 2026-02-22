@@ -17,6 +17,8 @@ router.patch(
   upload.single("avatar"),
   updateProfile
 );
+
+
 router.post("/change-password", protect, changePassword);
 router.delete("/delete-account", protect, deleteOwnAccount);
 
