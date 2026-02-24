@@ -42,10 +42,13 @@ export const deleteUser = catchAsync(async (req, res) => {
   const { id } = req.params;
 
   if (!id) {
-    throw new AppError("User ID is required", 400);
+    throw new AppError(400, "User ID is required");
   }
 
-  await User.findByIdAndDelete(id);
+  const deleted = await User.findByIdAndDelete(id);
+  if (!deleted) {
+    throw new AppError(404, "User not found");
+  }
 
   sendResponse(res, {
     statusCode: 200,

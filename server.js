@@ -23,12 +23,22 @@ export const io = new Server(server, {
   },
 });
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://yourdomain.com",
+];
+
 app.use(
   cors({
     credentials: true,
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  }),
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+  })
 );
 
 app.use(morgan("dev"));
