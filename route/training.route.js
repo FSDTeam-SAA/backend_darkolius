@@ -10,14 +10,15 @@ import {
   getMyTrainingsByDate,
   getTodayTrainings,
 } from "../controller/training.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+import { isAdmin, protect } from "../middleware/auth.middleware.js";
+import upload from "../middleware/multer.middleware.js";
 
 const router = express.Router();
 
 
-router.post("/", protect, createTraining);
+router.post("/", protect, upload.single("image"), createTraining);
 
-router.get("/all", protect, getAllTrainings);
+router.get("/all", protect, isAdmin, getAllTrainings);
 
 router.get("/me", protect, getMyTrainings);
 

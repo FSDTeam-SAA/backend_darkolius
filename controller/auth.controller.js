@@ -287,7 +287,7 @@ export const refreshToken = catchAsync(async (req, res) => {
     throw new AppError(400, "Refresh token is required");
   }
 
-  const decoded = verifyToken(refreshToken, process.env.JWT_REFRESH_SECR);
+  const decoded = verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET);
   const user = await User.findById(decoded._id);
   if (!user || user.refreshToken !== refreshToken) {
     throw new AppError(401, "Invalid refresh token");

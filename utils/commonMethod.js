@@ -55,3 +55,14 @@ export const uploadOnCloudinary = (fileBuffer, options = {}) => {
     stream.end(fileBuffer);
   });
 };
+
+export const deleteFromCloudinary = async (publicId, options = {}) => {
+  if (!publicId) {
+    return null;
+  }
+
+  return cloudinary.uploader.destroy(publicId, {
+    resource_type: "image",
+    ...options,
+  });
+};

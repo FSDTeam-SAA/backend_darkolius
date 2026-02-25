@@ -4,9 +4,14 @@ import catchAsync from "../utils/catchAsync.js";
 import sendResponse from "../utils/sendResponse.js";
 
 export const createSubscription = catchAsync(async (req, res) => {
-  const { name, benefits, priceMonthly, priceYearly, isActive } = req.body;
+  const { planType, name, benefits, priceMonthly, priceYearly, isActive } = req.body;
+
+  if (planType && !["initial", "training"].includes(planType)) {
+    throw new AppError(400, "Invalid plan type");
+  }
 
   const subscription = await Subscription.create({
+    planType: planType || "initial",
     name,
     benefits,
     priceMonthly,
@@ -23,11 +28,41 @@ export const createSubscription = catchAsync(async (req, res) => {
 });
 
 export const getSubscriptions = catchAsync(async (req, res) => {
-  const { activeOnly } = req.query;
+  const { activeOnly, planType } = req.query;
 
   const query = {};
   if (activeOnly === "true") {
     query.isActive = true;
+  }
+
+  if (planType) {
+    if (!["initial", "training"].includes(String(planType))) {
+      throw new AppError(400, "Invalid plan type");
+    }
+
+    const trainingPattern = /training|coach|session|personal/i;
+
+    if (planType === "initial") {
+      query.$or = [
+        { planType: "initial" },
+        {
+          $and: [
+            { planType: { $exists: false } },
+            { name: { $not: trainingPattern } },
+          ],
+        },
+      ];
+    } else {
+      query.$or = [
+        { planType: "training" },
+        {
+          $and: [
+            { planType: { $exists: false } },
+            { name: { $regex: trainingPattern } },
+          ],
+        },
+      ];
+    }
   }
 
   const subscriptions = await Subscription.find(query).sort({ createdAt: -1 });
@@ -58,6 +93,11 @@ export const getSubscriptionById = catchAsync(async (req, res) => {
 
 export const updateSubscription = catchAsync(async (req, res) => {
   const { id } = req.params;
+  const { planType } = req.body;
+
+  if (planType && !["initial", "training"].includes(String(planType))) {
+    throw new AppError(400, "Invalid plan type");
+  }
 
   const subscription = await Subscription.findByIdAndUpdate(id, req.body, {
     new: true,

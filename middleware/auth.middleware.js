@@ -5,18 +5,28 @@ import { User } from "./../model/user.model.js";
 
 export const protect = async (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token) throw new AppError(httpStatus.NOT_FOUND, "Token not found");
+  if (!token) {
+    throw new AppError(httpStatus.UNAUTHORIZED, "Authentication token is required");
+  }
 
   try {
     const decoded = await jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-    // console.log(decoded)
     const user = await User.findById(decoded._id);
-    if (user && (await User.isOTPVerified(user._id))) {
-      req.user = user;
+    if (!user) {
+      throw new AppError(httpStatus.UNAUTHORIZED, "User not found");
     }
-    next();
+
+    if (!(await User.isOTPVerified(user._id))) {
+      throw new AppError(httpStatus.UNAUTHORIZED, "User is not verified");
+    }
+
+    req.user = user;
+    return next();
   } catch (err) {
-    throw new AppError(401, "Invalid token");
+    if (err instanceof AppError) {
+      throw err;
+    }
+    throw new AppError(httpStatus.UNAUTHORIZED, "Invalid or expired token");
   }
 };
 

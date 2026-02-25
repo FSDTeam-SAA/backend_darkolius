@@ -10,13 +10,14 @@ import {
   getMyNutrationsByDate,
   getTodayNutrations,
 } from "../controller/nutration.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+import { isAdmin, protect } from "../middleware/auth.middleware.js";
+import upload from "../middleware/multer.middleware.js";
 
 const router = express.Router();
 
-router.post("/", protect, createNutration);
+router.post("/", protect, upload.single("image"), createNutration);
 
-router.get("/all", protect, getAllNutrations);
+router.get("/all", protect, isAdmin, getAllNutrations);
 
 router.get("/me", protect, getMyNutrations);
 

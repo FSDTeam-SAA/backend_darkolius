@@ -23,12 +23,13 @@ export const io = new Server(server, {
   },
 });
 
+
 app.use(
   cors({
     credentials: true,
     origin: "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  }),
+  })
 );
 
 app.use(morgan("dev"));

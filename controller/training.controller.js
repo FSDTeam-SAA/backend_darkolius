@@ -3,10 +3,43 @@ import httpStatus from "http-status";
 
 import { Training } from "../model/training.model.js";
 import { User } from "../model/user.model.js";
+import { uploadOnCloudinary } from "../utils/commonMethod.js";
 
 import catchAsync from "../utils/catchAsync.js";
 import sendResponse from "../utils/sendResponse.js";
 import AppError from "../errors/AppError.js";
+
+const parseImagePayload = (imagePayload) => {
+  if (!imagePayload) {
+    return undefined;
+  }
+
+  if (typeof imagePayload === "string") {
+    try {
+      const parsed = JSON.parse(imagePayload);
+      if (parsed && typeof parsed === "object") {
+        return {
+          url: parsed.url || null,
+          public_id: parsed.public_id || null,
+        };
+      }
+    } catch {
+      return {
+        url: imagePayload,
+        public_id: null,
+      };
+    }
+  }
+
+  if (typeof imagePayload === "object") {
+    return {
+      url: imagePayload.url || null,
+      public_id: imagePayload.public_id || null,
+    };
+  }
+
+  return undefined;
+};
 
 
 /**
@@ -14,6 +47,7 @@ import AppError from "../errors/AppError.js";
  */
 export const createTraining = catchAsync(async (req, res) => {
   const authUserId = req.user?._id?.toString?.();
+  const authRole = req.user?.role;
 
   const {
     userId: bodyUserId,
@@ -26,7 +60,7 @@ export const createTraining = catchAsync(async (req, res) => {
     healthProfile,
   } = req.body;
 
-  const userId = authUserId || bodyUserId;
+  const targetUserId = authRole === "admin" && bodyUserId ? bodyUserId : authUserId;
 
   // validation
   if (!name) {
@@ -38,30 +72,37 @@ export const createTraining = catchAsync(async (req, res) => {
   }
 
   // verify user exists
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
+  if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
     throw new AppError(httpStatus.BAD_REQUEST, "Invalid user id");
   }
 
-  const userExists = await User.exists({ _id: userId });
+  const userExists = await User.exists({ _id: targetUserId });
 
   if (!userExists) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
   }
+  
+  let uploadedImage;
+  if (req.file) {
+    const result = await uploadOnCloudinary(req.file.buffer, {
+      folder: "darkolius/training",
+    });
+
+    uploadedImage = {
+      url: result.secure_url,
+      public_id: result.public_id,
+    };
+  }
 
   // safe object creation
   const trainingData = {
-    userId,
+    userId: targetUserId,
     name,
     reps: reps || null,
     rest: rest || null,
     weight: weight || null,
     date: new Date(date),
-    image: image
-      ? {
-          url: image.url || null,
-          public_id: image.public_id || null,
-        }
-      : undefined,
+    image: uploadedImage || parseImagePayload(image),
     healthProfile: healthProfile || undefined,
   };
 

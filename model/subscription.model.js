@@ -2,6 +2,12 @@
 
 const subscriptionSchema = new mongoose.Schema(
   {
+    planType: {
+      type: String,
+      enum: ["initial", "training"],
+      default: "initial",
+      index: true,
+    },
     name: {
       type: String,
       required: true,
