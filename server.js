@@ -44,7 +44,6 @@ export const io = new Server(server, {
 });
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 
 app.use(morgan("dev"));
 app.use(express.json());
