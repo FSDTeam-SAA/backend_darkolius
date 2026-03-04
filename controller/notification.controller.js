@@ -5,6 +5,25 @@ import { Notification } from "../model/notification.model.js";
 import AppError from "../errors/AppError.js";
 import catchAsync from "../utils/catchAsync.js";
 import sendResponse from "../utils/sendResponse.js";
+import { getSocket } from "../utils/socket.js";
+
+const emitNotificationEvent = (eventName, notification, extra = {}) => {
+  const io = getSocket();
+  if (!io || !notification) return;
+
+  const userId = notification.userId ? notification.userId.toString() : null;
+  const payload =
+    typeof notification.toObject === "function"
+      ? notification.toObject()
+      : notification;
+
+  if (userId) {
+    io.to(`notifications_${userId}`).emit(eventName, { ...payload, ...extra });
+    return;
+  }
+
+  io.to("notifications_global").emit(eventName, { ...payload, ...extra });
+};
 
 export const createNotification = catchAsync(async (req, res) => {
   const {
@@ -34,6 +53,8 @@ export const createNotification = catchAsync(async (req, res) => {
     bullet,
     body,
   });
+
+  emitNotificationEvent("notification:new", notification);
 
   sendResponse(res, {
     statusCode: httpStatus.CREATED,
@@ -90,6 +111,7 @@ export const markNotificationRead = catchAsync(async (req, res) => {
 
   notification.isRead = true;
   await notification.save();
+  emitNotificationEvent("notification:updated", notification);
 
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -111,6 +133,8 @@ export const deleteNotification = catchAsync(async (req, res) => {
   if (!notification) {
     throw new AppError(httpStatus.NOT_FOUND, "Notification not found");
   }
+
+  emitNotificationEvent("notification:deleted", notification, { _id: id });
 
   sendResponse(res, {
     statusCode: httpStatus.OK,

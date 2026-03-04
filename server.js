@@ -7,6 +7,7 @@ import morgan from "morgan";
 import router from "./mainroute/index.js";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { setSocket } from "./utils/socket.js";
 
 import globalErrorHandler from "./middleware/globalErrorHandler.js";
 import notFound from "./middleware/notFound.js";
@@ -42,6 +43,7 @@ export const io = new Server(server, {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   },
 });
+setSocket(io);
 
 app.use(cors(corsOptions));
 
@@ -65,6 +67,21 @@ app.use(notFound);
 
 io.on("connection", (socket) => {
   console.log("A client connected:", socket.id);
+
+  socket.on("joinNotifications", (payload) => {
+    const userId =
+      typeof payload === "string" ? payload : payload?.userId;
+
+    socket.join("notifications_global");
+    if (userId) {
+      socket.join(`notifications_${userId}`);
+      console.log(
+        `Client ${socket.id} joined notification room: notifications_${userId}`,
+      );
+    } else {
+      console.log(`Client ${socket.id} joined global notification room`);
+    }
+  });
 
   socket.on("joinChatRoom", (userId) => {
     if (userId) {
