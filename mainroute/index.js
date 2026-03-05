@@ -9,6 +9,7 @@ import nutrationRoute from "../route/nutartion.route.js";
 import trainingRoute from "../route/training.route.js";
 import notificationRoute from "../route/notification.route.js";
 import attendanceRoute from "../route/attendance.route.js";
+import membershipFreezeRoute from "../route/membershipFreeze.route.js";
 import { ProductRoute } from "../route/product.route.js";
 import { CartRoute } from "../route/cart.route.js";
 
@@ -22,6 +23,7 @@ router.use("/nutration", nutrationRoute);
 router.use("/training", trainingRoute);
 router.use("/notification", notificationRoute);
 router.use("/attendance", attendanceRoute);
+router.use("/membership-freeze", membershipFreezeRoute);
 
 // New features (kept separate from existing APIs)
 router.use("/subscription", subscriptionRoute);
