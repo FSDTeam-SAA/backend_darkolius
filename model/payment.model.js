@@ -43,6 +43,10 @@ const paymentInfoSchema = new mongoose.Schema(
       type: String,
       enum: ["monthly", "yearly"],
     },
+    serviceType: { type: String, default: null, index: true },
+    personalTrainingSessions: { type: Number, min: 0, default: 0 },
+    personalTrainingSessionsCompleted: { type: Number, min: 0, default: 0 },
+    personalTrainingScheduledDates: { type: [Date], default: [] },
   },
   {
     timestamps: true,

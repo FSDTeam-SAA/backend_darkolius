@@ -13,6 +13,7 @@ const cartItemSchema = new mongoose.Schema({
     default: 1,
   },
   size: String,
+  flavour: String,
 });
 
 const cartSchema = new mongoose.Schema(

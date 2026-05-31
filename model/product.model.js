@@ -30,6 +30,10 @@ const productSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    flavour: {
+      type: [String],
+      default: [],
+    },
     stockSell: {
       type: Number,
       default: 0,
