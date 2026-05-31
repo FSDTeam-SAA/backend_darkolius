@@ -30,6 +30,14 @@ export const protect = async (req, res, next) => {
   }
 };
 
+export const restrictTo = (...roles) => (req, res, next) => {
+  const role = req.user?.role;
+  if (!role || !roles.includes(role)) {
+    throw new AppError(403, "Access denied for your role.");
+  }
+  next();
+};
+
 export const isAdmin = (req, res, next) => {
   if (req.user?.role !== "admin") {
     throw new AppError(403, "Access denied. You are not an admin.");
