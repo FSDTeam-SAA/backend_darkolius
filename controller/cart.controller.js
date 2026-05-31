@@ -5,29 +5,30 @@ import { Cart } from "../model/cart.model.js";
 
 const addToCart = catchAsync(async (req, res) => {
   const user = req.user._id;
-  const { productId, size, quantity } = req.body;
+  const { productId, size, flavour, quantity } = req.body;
+  const qty = Number(quantity) > 0 ? Number(quantity) : 1;
 
   let cart = await Cart.findOne({ user });
 
   if (cart) {
-    // Check if product already exists in the cart
+    // Match same product + same size + same flavour so different variants are separate lines
     const itemIndex = cart.items.findIndex(
-      (item) => item.product.toString() === productId,
+      (item) =>
+        item.product.toString() === productId &&
+        (item.size || "") === (size || "") &&
+        (item.flavour || "") === (flavour || ""),
     );
 
     if (itemIndex > -1) {
-      // Product exists in the cart, update the quantity
-      cart.items[itemIndex].quantity += quantity;
+      cart.items[itemIndex].quantity += qty;
     } else {
-      // Product does not exist in cart, add new item
-      cart.items.push({ product: productId, quantity });
+      cart.items.push({ product: productId, size, flavour, quantity: qty });
     }
     await cart.save();
   } else {
-    // No cart for user, create new cart
     cart = await Cart.create({
       user,
-      items: [{ product: productId, size, quantity }],
+      items: [{ product: productId, size, flavour, quantity: qty }],
     });
   }
 

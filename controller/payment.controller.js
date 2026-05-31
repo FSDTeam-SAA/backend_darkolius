@@ -25,7 +25,23 @@ export const createPayment = async (req, res) => {
     billingPeriod,
     paymentMethod,
     useTestStripe,
+    personalTrainingSessions,
+    serviceType: rawServiceType,
   } = req.body;
+
+  const ptSessionsRaw = Number(personalTrainingSessions);
+  const ptSessions =
+    Number.isFinite(ptSessionsRaw) && ptSessionsRaw > 0
+      ? Math.floor(ptSessionsRaw)
+      : 0;
+
+  const normalizedServiceType = (() => {
+    if (typeof rawServiceType === "string" && rawServiceType.trim()) {
+      return rawServiceType.trim().toLowerCase();
+    }
+    if (ptSessions > 0) return "personal training";
+    return null;
+  })();
 
   if (!price || Number(price) <= 0) {
     return res.status(400).json({ error: "Valid price is required." });
@@ -138,6 +154,8 @@ export const createPayment = async (req, res) => {
       paymentStatus: "pending",
       paymentMethod: normalizedPaymentMethod,
       billingPeriod: hasSubscription ? billingPeriod : null,
+      personalTrainingSessions: ptSessions,
+      serviceType: normalizedServiceType,
     });
 
     res.status(200).json({
@@ -249,12 +267,26 @@ export const getMyPurchaseHistory = async (req, res) => {
     const hasActivePlan = completed.some((p) => Boolean(p.subscriptionId));
     const lastPurchaseAt = completed.length ? completed[0].createdAt : null;
 
+    const serviceTitleFromType = (svc) => {
+      const v = (svc || "").toLowerCase();
+      if (v.includes("personal training")) return "Personal Training";
+      if (v.includes("online coaching") || v.includes("coaching")) {
+        return "Online Coaching";
+      }
+      if (v.includes("training plan")) return "Training Plan";
+      return null;
+    };
+
     const purchases = completed.flatMap((payment) => {
       if (!payment.items?.length) {
+        const svcTitle = serviceTitleFromType(payment.serviceType);
         return [
           {
             orderId: payment.orderId || payment.transactionId || "N/A",
-            title: payment.subscriptionId ? "Subscription Plan" : "Purchase",
+            title:
+              svcTitle ||
+              (payment.subscriptionId ? "Subscription Plan" : "Purchase"),
+            serviceType: payment.serviceType || null,
             price: Number(payment.price || 0),
             imageUrl: "",
             purchasedAt: payment.createdAt,
@@ -265,6 +297,7 @@ export const getMyPurchaseHistory = async (req, res) => {
       return payment.items.map((item) => ({
         orderId: payment.orderId || payment.transactionId || "N/A",
         title: item.name || "Product",
+        serviceType: payment.serviceType || null,
         price: Number(item.unitPrice || 0) * Number(item.quantity || 1),
         imageUrl: item.imageUrl || "",
         purchasedAt: payment.createdAt,
@@ -338,6 +371,274 @@ export const getMyMembershipSummary = async (req, res) => {
         renewalDate,
         paymentMethod: latestMembershipPayment.paymentMethod || "Card",
         paymentStatus: latestMembershipPayment.paymentStatus || "complete",
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const getMyPersonalTraining = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+
+    const latest = await paymentInfo
+      .findOne({
+        userId,
+        paymentStatus: "complete",
+        personalTrainingSessions: { $gt: 0 },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!latest) {
+      return res.status(200).json({
+        success: true,
+        message: "No active personal training package",
+        data: {
+          sessions: 0,
+          sessionsCompleted: 0,
+          scheduledDates: [],
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Personal training summary retrieved",
+      data: {
+        paymentId: latest._id,
+        sessions: latest.personalTrainingSessions || 0,
+        sessionsCompleted: latest.personalTrainingSessionsCompleted || 0,
+        scheduledDates: latest.personalTrainingScheduledDates || [],
+        purchasedAt: latest.createdAt,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const listAllPersonalTrainingPackages = async (req, res) => {
+  try {
+    const { page: pageRaw, limit: limitRaw, search, status } = req.query;
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(50, Math.max(1, Number(limitRaw) || 20));
+
+    const baseMatch = {
+      paymentStatus: "complete",
+      personalTrainingSessions: { $gt: 0 },
+    };
+
+    const aggregation = [
+      { $match: baseMatch },
+      { $sort: { createdAt: -1 } },
+      {
+        // Keep only the latest PT package per user
+        $group: {
+          _id: "$userId",
+          paymentId: { $first: "$_id" },
+          sessions: { $first: "$personalTrainingSessions" },
+          sessionsCompleted: {
+            $first: { $ifNull: ["$personalTrainingSessionsCompleted", 0] },
+          },
+          scheduledDates: {
+            $first: { $ifNull: ["$personalTrainingScheduledDates", []] },
+          },
+          purchasedAt: { $first: "$createdAt" },
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          userId: "$_id",
+          paymentId: 1,
+          sessions: 1,
+          sessionsCompleted: 1,
+          sessionsRemaining: {
+            $max: [0, { $subtract: ["$sessions", "$sessionsCompleted"] }],
+          },
+          scheduledDates: 1,
+          purchasedAt: 1,
+          userName: "$user.name",
+          userEmail: "$user.email",
+          userAvatar: "$user.avatar.url",
+        },
+      },
+    ];
+
+    if (typeof search === "string" && search.trim()) {
+      const regex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      aggregation.push({
+        $match: {
+          $or: [{ userName: regex }, { userEmail: regex }],
+        },
+      });
+    }
+
+    if (status === "active") {
+      aggregation.push({ $match: { sessionsRemaining: { $gt: 0 } } });
+    } else if (status === "completed") {
+      aggregation.push({ $match: { sessionsRemaining: { $lte: 0 } } });
+    }
+
+    const totalAggregation = [...aggregation, { $count: "total" }];
+    const totalResult = await paymentInfo.aggregate(totalAggregation);
+    const total = totalResult[0]?.total || 0;
+
+    aggregation.push({ $skip: (page - 1) * limit }, { $limit: limit });
+    const items = await paymentInfo.aggregate(aggregation);
+
+    return res.status(200).json({
+      success: true,
+      message: "Personal training packages retrieved",
+      meta: { page, limit, total },
+      data: items,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const completePersonalTrainingSession = async (req, res) => {
+  try {
+    const { paymentId, userId, delta } = req.body;
+    const step = Number(delta) === -1 ? -1 : 1;
+
+    let target = null;
+    if (paymentId && mongoose.isValidObjectId(paymentId)) {
+      target = await paymentInfo.findOne({
+        _id: paymentId,
+        paymentStatus: "complete",
+        personalTrainingSessions: { $gt: 0 },
+      });
+    } else if (userId && mongoose.isValidObjectId(userId)) {
+      target = await paymentInfo
+        .findOne({
+          userId,
+          paymentStatus: "complete",
+          personalTrainingSessions: { $gt: 0 },
+        })
+        .sort({ createdAt: -1 });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: "Either paymentId or userId is required.",
+      });
+    }
+
+    if (!target) {
+      return res.status(404).json({
+        success: false,
+        error: "No active personal training package found.",
+      });
+    }
+
+    const current = target.personalTrainingSessionsCompleted || 0;
+    const next = Math.min(
+      target.personalTrainingSessions,
+      Math.max(0, current + step),
+    );
+
+    if (next === current) {
+      return res.status(200).json({
+        success: true,
+        message: step > 0 ? "All sessions already completed." : "Already at zero.",
+        data: {
+          paymentId: target._id,
+          sessions: target.personalTrainingSessions,
+          sessionsCompleted: current,
+          sessionsRemaining: target.personalTrainingSessions - current,
+        },
+      });
+    }
+
+    target.personalTrainingSessionsCompleted = next;
+    await target.save();
+
+    return res.status(200).json({
+      success: true,
+      message: step > 0 ? "Session marked completed." : "Session removed.",
+      data: {
+        paymentId: target._id,
+        sessions: target.personalTrainingSessions,
+        sessionsCompleted: target.personalTrainingSessionsCompleted,
+        sessionsRemaining:
+          target.personalTrainingSessions -
+          target.personalTrainingSessionsCompleted,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      details: error?.message,
+    });
+  }
+};
+
+export const setPersonalTrainingDates = async (req, res) => {
+  try {
+    const { userId, dates } = req.body;
+    if (!userId || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, error: "Valid userId is required" });
+    }
+    if (!Array.isArray(dates)) {
+      return res.status(400).json({ success: false, error: "dates must be an array of ISO date strings" });
+    }
+
+    const parsedDates = dates
+      .map((d) => new Date(d))
+      .filter((d) => !Number.isNaN(d.getTime()));
+
+    const latest = await paymentInfo
+      .findOne({
+        userId,
+        paymentStatus: "complete",
+        personalTrainingSessions: { $gt: 0 },
+      })
+      .sort({ createdAt: -1 });
+
+    if (!latest) {
+      return res.status(404).json({
+        success: false,
+        error: "No active personal training package found for this user",
+      });
+    }
+
+    latest.personalTrainingScheduledDates = parsedDates;
+    await latest.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Personal training dates updated",
+      data: {
+        paymentId: latest._id,
+        scheduledDates: latest.personalTrainingScheduledDates,
       },
     });
   } catch (error) {

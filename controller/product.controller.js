@@ -20,20 +20,20 @@ const parseNumericField = (value, fallback) => {
   return Number.isFinite(numericValue) ? numericValue : fallback;
 };
 
-const parseSizes = (sizePayload) => {
-  if (sizePayload === undefined || sizePayload === null || sizePayload === "") {
+const parseStringList = (payload) => {
+  if (payload === undefined || payload === null || payload === "") {
     return [];
   }
 
-  if (Array.isArray(sizePayload)) {
-    return sizePayload
+  if (Array.isArray(payload)) {
+    return payload
       .map((item) => String(item).trim())
       .filter(Boolean);
   }
 
-  if (typeof sizePayload === "string") {
+  if (typeof payload === "string") {
     try {
-      const parsed = JSON.parse(sizePayload);
+      const parsed = JSON.parse(payload);
       if (Array.isArray(parsed)) {
         return parsed
           .map((item) => String(item).trim())
@@ -43,7 +43,7 @@ const parseSizes = (sizePayload) => {
       // Ignore parse error and fallback to comma-separated input.
     }
 
-    return sizePayload
+    return payload
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
@@ -51,6 +51,9 @@ const parseSizes = (sizePayload) => {
 
   return [];
 };
+
+const parseSizes = parseStringList;
+const parseFlavours = parseStringList;
 
 const parseBodyImage = (imagePayload) => {
   if (!imagePayload) {
@@ -94,6 +97,7 @@ const createProduct = catchAsync(async (req, res) => {
     description,
     price,
     size,
+    flavour,
     stockSell,
     stockAvailable,
     totalStock,
@@ -133,6 +137,7 @@ const createProduct = catchAsync(async (req, res) => {
     description: description?.trim?.() || "",
     price: numericPrice,
     size: parseSizes(size),
+    flavour: parseFlavours(flavour),
     stockSell: parseNumericField(stockSell, 0),
     stockAvailable: parseNumericField(stockAvailable, 0),
     totalStock: parseNumericField(totalStock, 0),
@@ -241,6 +246,10 @@ export const updateProduct = catchAsync(async (req, res) => {
 
   if (req.body.size !== undefined) {
     payload.size = parseSizes(req.body.size);
+  }
+
+  if (req.body.flavour !== undefined) {
+    payload.flavour = parseFlavours(req.body.flavour);
   }
 
   if (req.body.stockSell !== undefined) {
