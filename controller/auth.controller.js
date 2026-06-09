@@ -8,9 +8,9 @@ import { sendEmail } from "../utils/sendEmail.js";
 import { User } from "./../model/user.model.js";
 
 export const register = catchAsync(async (req, res) => {
-  const { name, email, password, confirmPassword } = req.body;
+  const { name, email, password, confirmPassword, address } = req.body;
 
-  if (!email || !password) {
+  if (!email || !password || typeof email !== "string") {
     throw new AppError(httpStatus.FORBIDDEN, "Please fill in all fields");
   }
 
@@ -30,6 +30,8 @@ export const register = catchAsync(async (req, res) => {
   const user = await User.create({
     name,
     email,
+    // Address is optional (App Store Guideline 5.1.1(v)); stored only when sent.
+    address,
     password,
     verificationInfo: { token: "", verified: true },
   });

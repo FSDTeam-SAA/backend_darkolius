@@ -4,6 +4,12 @@ import { uploadOnCloudinary } from "../utils/commonMethod.js";
 import AppError from "../errors/AppError.js";
 import sendResponse from "../utils/sendResponse.js";
 import catchAsync from "../utils/catchAsync.js";
+import { Cart } from "../model/cart.model.js";
+import { Attendance } from "../model/attendance.model.js";
+import { Notification } from "../model/notification.model.js";
+import { Nutration } from "../model/nutration.model.js";
+import { Training } from "../model/training.model.js";
+import { paymentInfo } from "../model/payment.model.js";
 
 // Get user profile
 export const getProfile = catchAsync(async (req, res) => {
@@ -148,9 +154,28 @@ export const changePassword = catchAsync(async (req, res) => {
 export const deleteOwnAccount = catchAsync(async (req, res) => {
   const userId = req.user._id;
 
+  // Delete the account record first — this is the critical action that
+  // satisfies App Store Guideline 5.1.1(v) and immediately invalidates the
+  // user's session (their access/refresh tokens no longer resolve to a user).
   const user = await User.findByIdAndDelete(userId);
   if (!user) {
     throw new AppError(httpStatus.NOT_FOUND, "User not found");
+  }
+
+  // Best-effort cleanup of associated data. Personal content is removed;
+  // financial records are kept for accounting but detached from the user.
+  // A cleanup failure must not fail the account deletion that already happened.
+  try {
+    await Promise.all([
+      Cart.deleteMany({ user: userId }),
+      Attendance.deleteMany({ userId }),
+      Notification.deleteMany({ userId }),
+      Nutration.deleteMany({ userId }),
+      Training.deleteMany({ userId }),
+      paymentInfo.updateMany({ userId }, { $unset: { userId: "" } }),
+    ]);
+  } catch (err) {
+    console.error("Account data cleanup failed:", err?.message);
   }
 
   sendResponse(res, {

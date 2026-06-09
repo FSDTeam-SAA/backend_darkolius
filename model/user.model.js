@@ -69,6 +69,9 @@ userSchema.pre("save", async function (next) {
 });
 
 userSchema.statics.isUserExistsByEmail = async function (email) {
+  // Guard against NoSQL operator injection (e.g. { "$gt": "" }) on the
+  // unauthenticated auth endpoints that funnel through this lookup.
+  if (typeof email !== "string") return null;
   return await User.findOne({ email }).select("+password");
 };
 
