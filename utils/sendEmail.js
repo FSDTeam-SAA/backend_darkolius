@@ -1,16 +1,18 @@
 import nodemailer from "nodemailer";
 export const sendEmail = async (to, subject, html) => {
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port: Number(process.env.SMTP_PORT) || 587,
     secure: false,
     auth: {
-      user: "finishersrepair@gmail.com",
-      pass: "rvclyuctitamywaw",
+      // Credentials must come from the environment. The previously hardcoded
+      // Gmail app password is leaked and MUST be rotated.
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
     },
   });
   await transporter.sendMail({
-    from: "finishersrepair@gmail.com",
+    from: process.env.SMTP_USER,
     to,
     subject: subject
       ? subject
